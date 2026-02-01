@@ -34,6 +34,11 @@ def main():
             continue
         print("Camera is opened.")
         
+        # Warmup camera to allow auto-focus/exposure and initialization
+        print("Warming up camera for 2 seconds...")
+        time.sleep(2)
+        
+        
         # Optional: Force resolution to ensure consistency
         # cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         # cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
