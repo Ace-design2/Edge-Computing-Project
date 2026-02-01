@@ -17,12 +17,14 @@ def test_camera(index, backend_name, backend_id):
     # Warmup
     time.sleep(2)
     
-    for i in range(5):
+    for i in range(100):
         ret, frame = cap.read()
         if ret:
-            print(f"Frame {i} captured successfully. Shape: {frame.shape}")
+            if i % 10 == 0:
+                print(f"Frame {i} captured successfully. Shape: {frame.shape}")
         else:
             print(f"Frame {i} capture failed.")
+            break
             
     cap.release()
     print("Test complete.\n")

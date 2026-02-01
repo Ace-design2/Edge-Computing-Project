@@ -25,7 +25,8 @@ def main():
     while True:
         print("Initializing Camera...")
         # Revert to default backend (Auto/MSMF) but with reconnection logic
-        cap = cv2.VideoCapture(WEBCAM_INDEX)
+        # For macOS, forcing AVFoundation is often more stable
+        cap = cv2.VideoCapture(WEBCAM_INDEX, cv2.CAP_AVFOUNDATION)
         
         print("Checking if camera is opened...")
         if not cap.isOpened():
@@ -35,15 +36,37 @@ def main():
         print("Camera is opened.")
         
         # Warmup camera to allow auto-focus/exposure and initialization
-        print("Warming up camera for 2 seconds...")
-        time.sleep(2)
+        # Warmup camera to allow auto-focus/exposure and initialization
+        # Use active reading instead of sleep to prevent buffer overflow/timeout
+        print("Warming up camera (active reading)...")
+        start_time = time.time()
+        while time.time() - start_time < 0.5:
+            cap.read()
         
         
-        # Optional: Force resolution to ensure consistency
-        # cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        # cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         
-        print("Camera initialized successfully.")
+        # Verify valid frames can be read
+        print("Verifying camera stream...")
+        
+        # Force resolution to 640x480 to reduce bandwidth/instability
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        cap.set(cv2.CAP_PROP_FPS, 15)
+        
+        
+        valid_frames = 0
+        for _ in range(5):
+            ret, val_frame = cap.read()
+            if ret:
+                valid_frames += 1
+        
+        if valid_frames == 0:
+            print("Error: Camera opened but returned no valid frames. Retrying...")
+            cap.release()
+            time.sleep(2)
+            continue
+            
+        print(f"Camera initialized successfully. (Verified {valid_frames}/5 initial frames)")
         first_frame = None
 
         while True:
