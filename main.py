@@ -17,6 +17,24 @@ def open_camera():
     time.sleep(0.5)
     return cap
 
+def enhance_for_low_light(frame):
+    """
+    Applies CLAHE (Contrast Limited Adaptive Histogram Equalization) 
+    to enhance details in low light conditions.
+    """
+    # Convert to LAB color space
+    lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    
+    # Apply CLAHE to L-channel
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+    cl = clahe.apply(l)
+    
+    # Merge and convert back to BGR
+    limg = cv2.merge((cl, a, b))
+    enhanced = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
+    return enhanced
+
 def main():
     try:
         detector = PersonDetector()
@@ -52,13 +70,18 @@ def main():
         original_frame = frame.copy()
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        gray = cv2.GaussianBlur(gray, (21, 21), 0)
+        
+        # Calculate brightness (0-255)
+        brightness = cv2.mean(gray)[0]
+        is_low_light = brightness < 60
+        
+        gray_blur = cv2.GaussianBlur(gray, (21, 21), 0)
 
         if first_frame is None:
-            first_frame = gray
+            first_frame = gray_blur
             continue
 
-        delta_frame = cv2.absdiff(first_frame, gray)
+        delta_frame = cv2.absdiff(first_frame, gray_blur)
         thresh = cv2.threshold(delta_frame, 25, 255, cv2.THRESH_BINARY)[1]
         thresh = cv2.dilate(thresh, None, iterations=2)
 
@@ -70,17 +93,26 @@ def main():
 
         status_text = "Status: Monitoring"
         color = (0, 255, 0)
+        
+        # Process frame for detection/display
+        display_frame = frame
+        if is_low_light:
+            display_frame = enhance_for_low_light(frame)
+            status_text += " (Low Light)"
 
         if motion_detected:
-            persons = detector.detect_people(frame, CONFIDENCE_THRESHOLD)
+            # Detect on the best available frame (enhanced if dark)
+            persons = detector.detect_people(display_frame, CONFIDENCE_THRESHOLD)
 
             if persons:
                 status_text = f"WARNING: Person Detected ({len(persons)})"
+                if is_low_light:
+                     status_text += " (Low Light)"
                 color = (0, 0, 255)
 
                 for (x1, y1, x2, y2) in persons:
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-                    cv2.putText(frame, "Person",
+                    cv2.rectangle(display_frame, (x1, y1), (x2, y2), color, 2)
+                    cv2.putText(display_frame, "Person",
                                 (x1, y1 - 10),
                                 cv2.FONT_HERSHEY_SIMPLEX,
                                 0.5, color, 2)
@@ -89,14 +121,16 @@ def main():
                 if now - last_snapshot_time > SNAPSHOT_COOLDOWN:
                     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
                     filename = f"detections/person_{ts}.jpg"
-                    cv2.imwrite(filename, original_frame)
+                    # Save the enhanced frame if in low light, or original? 
+                    # User probably wants to see WHO it is, so enhanced is better.
+                    cv2.imwrite(filename, display_frame) 
                     print(f"📸 Snapshot saved: {filename}")
                     last_snapshot_time = now
 
-        cv2.putText(frame, status_text, (10, 25),
+        cv2.putText(display_frame, status_text, (10, 25),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
-        cv2.imshow("Security Feed", frame)
+        cv2.imshow("Security Feed", display_frame)
 
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
