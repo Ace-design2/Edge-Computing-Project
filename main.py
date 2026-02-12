@@ -1,7 +1,7 @@
 import cv2
 import time
 from datetime import datetime
-import os
+import platform
 from person_detector import PersonDetector
 
 MIN_AREA = 500
@@ -10,11 +10,18 @@ CONFIDENCE_THRESHOLD = 0.5
 SNAPSHOT_COOLDOWN = 5
 
 def open_camera():
-    cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)
+    system = platform.system()
+    if system == 'Windows':
+        cap = cv2.VideoCapture(0) # Reverting to default (likely MSMF) as DSHOW is hanging
+    elif system == 'Darwin':
+        cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)
+    else:
+        cap = cv2.VideoCapture(0)
+        
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     cap.set(cv2.CAP_PROP_FPS, 15)
-    time.sleep(0.5)
+    time.sleep(1.0)
     return cap
 
 def enhance_for_low_light(frame):
@@ -52,21 +59,33 @@ def main():
         print("❌ Camera could not be opened.")
         return
 
-    last_snapshot_time = 0
+    print("Starting camera... (If this hangs, please check camera connection)")
+    cap = open_camera()
+    time.sleep(1)
+
+    if not cap.isOpened():
+        print("❌ Camera could not be opened. Please check if another app is using it.")
+        return
+
+    print("✅ Camera started successfully.")
     first_frame = None
 
     while True:
-        ret, frame = cap.read()
+        try:
+            ret, frame = cap.read()
 
-        if not ret:
-            print("⚠️ Camera disconnected. Reinitializing...")
-            cap.release()
-            time.sleep(2)
-            cap = open_camera()
-            first_frame = None
-            continue
-
-        frame = cv2.resize(frame, (640, 480))
+            if not ret:
+                print("⚠️ Camera disconnected or empty frame. Reinitializing...")
+                cap.release()
+                time.sleep(2)
+                cap = open_camera()
+                first_frame = None
+                continue
+            
+            frame = cv2.resize(frame, (640, 480))
+        except Exception as e:
+            print(f"❌ Error in main loop: {e}")
+            break
         original_frame = frame.copy()
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
